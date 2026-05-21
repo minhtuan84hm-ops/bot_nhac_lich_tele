@@ -260,7 +260,7 @@ bot.onText(/\/delete[_ ](\d+)/, (msg) => handleMessage(msg));
 bot.on('message', (msg) => {
   if (!msg.text) return;
   const text = msg.text.trim();
-  const botUsername = '@dieuthyen_csbot';
+  const botUsername = '@dieuthuyen_csbot';
 
   // Trong group: chỉ phản hồi khi được tag hoặc dùng lệnh /
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
