@@ -352,7 +352,8 @@ bot.on('callback_query', async (query) => {
 });
 
 // ─── Command + message handlers ──────────────────────────────────────────────
-bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id)); (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
+bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id));
+bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
 bot.onText(/\/list/, async (msg) => {
   const isGrp = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
   const events = isGrp
