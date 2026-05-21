@@ -1,79 +1,65 @@
-const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'events.db');
-
-// ensure data dir exists
-const fs = require('fs');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'events.json');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-const db = new Database(DB_PATH);
+function read() {
+  try {
+    return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+  } catch {
+    return { events: [], nextId: 1 };
+  }
+}
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
-db.exec(`
-  CREATE TABLE IF NOT EXISTS events (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id    INTEGER NOT NULL,
-    user_id    INTEGER NOT NULL,
-    created_by TEXT,
-    title      TEXT    NOT NULL,
-    datetime   TEXT,
-    repeat     TEXT    DEFAULT 'none',
-    mention    TEXT,
-    note       TEXT,
-    created_at TEXT    DEFAULT (datetime('now'))
-  );
-`);
+function write(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
 
-// ─── Queries ──────────────────────────────────────────────────────────────────
-const stmtAdd = db.prepare(`
-  INSERT INTO events (chat_id, user_id, created_by, title, datetime, repeat, mention, note)
-  VALUES (@chat_id, @user_id, @created_by, @title, @datetime, @repeat, @mention, @note)
-`);
-
-const stmtGetAll = db.prepare(`SELECT * FROM events ORDER BY datetime ASC`);
-
-const stmtGetChat = db.prepare(`
-  SELECT * FROM events
-  WHERE chat_id = ?
-    AND (repeat != 'none' OR datetime(datetime) >= datetime('now'))
-  ORDER BY datetime ASC
-`);
-
-const stmtGetToday = db.prepare(`
-  SELECT * FROM events
-  WHERE chat_id = ?
-    AND date(datetime, '+7 hours') = date('now', '+7 hours')
-  ORDER BY datetime ASC
-`);
-
-const stmtDelete = db.prepare(`DELETE FROM events WHERE id = ?`);
-const stmtDeleteChat = db.prepare(`DELETE FROM events WHERE id = ? AND chat_id = ?`);
-
-// ─── Exports ──────────────────────────────────────────────────────────────────
 function addEvent(data) {
-  const info = stmtAdd.run(data);
-  return { id: info.lastInsertRowid, ...data };
+  const db = read();
+  const event = { id: db.nextId++, ...data };
+  db.events.push(event);
+  write(db);
+  return event;
 }
 
 function getAllEvents() {
-  return stmtGetAll.all();
+  return read().events;
 }
 
 function getUpcomingEvents(chatId) {
-  return stmtGetChat.all(chatId);
+  const now = new Date();
+  return read().events.filter(e =>
+    e.chat_id === chatId &&
+    (e.repeat !== 'none' || new Date(e.datetime) >= now)
+  ).sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
 }
 
 function getTodayEvents(chatId) {
-  return stmtGetToday.all(chatId);
+  const now = new Date();
+  const todayVN = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  return read().events.filter(e => {
+    if (e.chat_id !== chatId) return false;
+    const dt = new Date(new Date(e.datetime).toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    return dt.getFullYear() === todayVN.getFullYear() &&
+           dt.getMonth() === todayVN.getMonth() &&
+           dt.getDate() === todayVN.getDate();
+  }).sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
 }
 
 function deleteEvent(id) {
-  stmtDelete.run(id);
+  const db = read();
+  db.events = db.events.filter(e => e.id !== id);
+  write(db);
 }
 
 function deleteEventByChat(id, chatId) {
-  return stmtDeleteChat.run(id, chatId).changes > 0;
+  const db = read();
+  const before = db.events.length;
+  db.events = db.events.filter(e => !(e.id === id && e.chat_id === chatId));
+  write(db);
+  return db.events.length < before;
 }
 
 module.exports = { addEvent, getAllEvents, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat };
