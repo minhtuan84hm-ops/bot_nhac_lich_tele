@@ -34,10 +34,16 @@ JSON format:
 }
 
 Quy tắc:
-- "chiều mai 2h" = ngày mai lúc 14:00
+- "chiều mai 2h" hoặc "2h chiều mai" = ngày mai lúc 14:00
 - "sáng mai 9h" = ngày mai lúc 09:00
 - "tối nay 8h" = hôm nay lúc 20:00
+- "chiều nay 5h" = hôm nay lúc 17:00
 - "thứ 2 tuần sau" = thứ 2 tuần tới
+- "lúc 5h" hoặc "5h" = 17:00 nếu không rõ sáng/chiều thì mặc định là chiều
+- Nếu tin nhắn có chứa giờ (vd: 5h, 9h, 14h, 2h chiều...) thì action = "create"
+- Nếu tin nhắn có "nhắc", "họp", "deadline", "meeting", "lịch" kèm giờ thì action = "create"
+- mention: nếu có nhiều @username thì ghép lại thành 1 chuỗi, ví dụ: "@Nam @Hoa @Tuan"
+- Tên người không có @ (vd: "Trung Salefarm", "Hương") thì bỏ qua, không thêm vào mention
 - Nếu không có ngày/giờ cụ thể và là lệnh tạo lịch, đặt datetime = null
 - Nếu là /today hoặc "lịch hôm nay" thì action = "today"
 - Nếu là /list hoặc "xem lịch" hoặc "danh sách" thì action = "list"
@@ -52,7 +58,7 @@ Quy tắc:
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.1-8b-instant',
       max_tokens: 500,
       temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],
