@@ -4,8 +4,11 @@ let client;
 
 async function getClient() {
   if (client) return client;
+  const url = process.env.DATABASE_URL;
+  console.log('DATABASE_URL prefix:', url ? url.substring(0, 30) + '...' : 'KHÔNG CÓ!');
+  if (!url) throw new Error('DATABASE_URL chưa được set!');
   client = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: url,
     ssl: { rejectUnauthorized: false }
   });
   await client.connect();
