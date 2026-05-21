@@ -84,6 +84,12 @@ async function getTodayEvents(chatId) {
   return res.rows;
 }
 
+async function getAllEventsForChat(chatId) {
+  const db = await getClient();
+  const res = await db.query('SELECT * FROM events WHERE chat_id=$1 ORDER BY datetime ASC', [chatId]);
+  return res.rows;
+}
+
 async function deleteEvent(id) {
   const db = await getClient();
   await db.query('DELETE FROM events WHERE id=$1', [id]);
@@ -95,4 +101,4 @@ async function deleteEventByChat(id, chatId) {
   return res.rowCount > 0;
 }
 
-module.exports = { addEvent, getAllEvents, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat };
+module.exports = { addEvent, getAllEvents, getAllEventsForChat, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat };
