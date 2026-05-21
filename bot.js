@@ -2,15 +2,16 @@ const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 const db = require('./db');
 
-// Xóa webhook cũ trước khi polling để tránh conflict
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_USERNAME = '@dieuthuyen_csbot';
+
+// Xóa webhook cũ trước khi polling
 fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`)
   .then(() => console.log('✅ Đã xóa webhook cũ'))
   .catch(e => console.log('webhook delete:', e.message));
 
 const bot = new TelegramBot(token, { polling: false });
 
-// Delay 3s rồi mới bắt đầu polling để tránh conflict
 setTimeout(() => {
   bot.startPolling({ restart: false });
   console.log('✅ Bắt đầu polling...');
@@ -30,41 +31,36 @@ bot.on('polling_error', (err) => {
   }
 });
 
-// ─── Groq parser: extract event from natural language ────────────────────────
+// ─── Groq parser ─────────────────────────────────────────────────────────────
 async function parseEventFromText(text) {
   const now = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
   const prompt = `Bạn là trợ lý phân tích lịch. Hôm nay là ${now} (múi giờ Việt Nam).
 
-Từ đoạn text sau, hãy trích xuất thông tin lịch/sự kiện và trả về JSON thuần túy (không markdown, không backtick, không giải thích):
+Từ đoạn text sau, trả về JSON thuần túy (không markdown, không backtick, không giải thích):
 "${text}"
 
 JSON format:
 {
   "action": "create" | "list" | "delete" | "today" | "help" | "unknown",
   "title": "tên sự kiện",
-  "datetime": "ISO 8601 string theo múi giờ +07:00, ví dụ: 2024-12-25T14:00:00+07:00",
+  "datetime": "ISO 8601 +07:00, ví dụ: 2024-12-25T14:00:00+07:00",
   "repeat": "none" | "daily" | "weekly",
-  "mention": "@username hoặc null nếu không nhắc ai cụ thể",
-  "note": "ghi chú thêm hoặc null"
+  "remind_before": [20, 10],
+  "mention": "@user1 @user2 hoặc null",
+  "note": "ghi chú hoặc null"
 }
 
 Quy tắc:
-- "chiều mai 2h" hoặc "2h chiều mai" = ngày mai lúc 14:00
-- "sáng mai 9h" = ngày mai lúc 09:00
-- "tối nay 8h" = hôm nay lúc 20:00
-- "chiều nay 5h" = hôm nay lúc 17:00
-- "thứ 2 tuần sau" = thứ 2 tuần tới
-- "lúc 5h" hoặc "5h" = 17:00 nếu không rõ sáng/chiều thì mặc định là chiều
-- Nếu tin nhắn có chứa giờ (vd: 5h, 9h, 14h, 2h chiều...) thì action = "create"
-- Nếu tin nhắn có "nhắc", "họp", "deadline", "meeting", "lịch" kèm giờ thì action = "create"
-- mention: nếu có nhiều @username thì ghép lại thành 1 chuỗi, ví dụ: "@Nam @Hoa @Tuan"
-- Tên người không có @ (vd: "Trung Salefarm", "Hương") thì bỏ qua, không thêm vào mention
-- Nếu không có ngày/giờ cụ thể và là lệnh tạo lịch, đặt datetime = null
-- Nếu là /today hoặc "lịch hôm nay" thì action = "today"
-- Nếu là /list hoặc "xem lịch" hoặc "danh sách" thì action = "list"
-- Nếu là /help thì action = "help"
-- Nếu có "hàng ngày" hoặc "mỗi ngày" thì repeat = "daily"
-- Nếu có "hàng tuần" hoặc "mỗi tuần" thì repeat = "weekly"`;
+- "chiều mai 2h" = ngày mai 14:00, "sáng mai 9h" = ngày mai 09:00
+- "tối nay 8h" = hôm nay 20:00, "chiều nay 5h" = hôm nay 17:00
+- Giờ không rõ sáng/chiều thì mặc định chiều (14:00+)
+- mention: chỉ lấy @username có dấu @, bỏ qua tên không có @
+- remind_before: mảng số phút nhắc trước, ví dụ "nhắc trước 20 phút và 10 phút" = [20, 10], "nhắc trước 30 phút" = [30], mặc định = []
+- Nếu có giờ trong tin nhắn thì action = "create"
+- "hàng ngày"/"mỗi ngày" → repeat = "daily", "hàng tuần"/"mỗi tuần" → repeat = "weekly"
+- /today hoặc "lịch hôm nay" → action = "today"
+- /list hoặc "xem lịch" → action = "list"
+- /help → action = "help"`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -73,7 +69,7 @@ Quy tắc:
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 500,
       temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],
@@ -90,7 +86,7 @@ Quy tắc:
   try { return JSON.parse(raw); } catch(e) { return { action: 'unknown' }; }
 }
 
-// ─── Schedule a notification job ─────────────────────────────────────────────
+// ─── Schedule jobs (main + nhắc trước) ───────────────────────────────────────
 function scheduleJob(event) {
   const dt = new Date(event.datetime);
   if (event.repeat === 'none' && dt <= new Date()) return;
@@ -104,19 +100,26 @@ function scheduleJob(event) {
       ? { dayOfWeek: dt.getDay(), hour: dt.getHours(), minute: dt.getMinutes(), tz: 'Asia/Ho_Chi_Minh' }
       : dt;
 
+  // Job chính
   schedule.scheduleJob(jobId, rule, async () => {
     const mention = event.mention ? event.mention + ' ' : '';
-    const msg =
-      `🔔 *Nhắc lịch!*\n\n` +
-      `${mention}📌 *${event.title}*\n` +
-      `🕐 ${formatDateTime(new Date(event.datetime))}` +
-      `${event.note ? '\n📝 ' + event.note : ''}`;
-    try {
-      await bot.sendMessage(event.chat_id, msg, { parse_mode: 'Markdown' });
-    } catch (e) {
-      console.error('Lỗi gửi nhắc lịch:', e.message);
-    }
+    const msg = `🔔 *Đến giờ rồi!*\n\n${mention}📌 *${event.title}*\n🕐 ${formatDateTime(new Date(event.datetime))}${event.note ? '\n📝 ' + event.note : ''}`;
+    try { await bot.sendMessage(event.chat_id, msg, { parse_mode: 'Markdown' }); } catch(e) {}
     if (event.repeat === 'none') db.deleteEvent(event.id);
+  });
+
+  // Jobs nhắc trước
+  const remindBefore = event.remind_before ? JSON.parse(event.remind_before) : [];
+  remindBefore.forEach(minutes => {
+    const remindTime = new Date(dt.getTime() - minutes * 60 * 1000);
+    if (remindTime <= new Date()) return;
+    const remindJobId = `event_${event.id}_before_${minutes}`;
+    if (schedule.scheduledJobs[remindJobId]) schedule.scheduledJobs[remindJobId].cancel();
+    schedule.scheduleJob(remindJobId, remindTime, async () => {
+      const mention = event.mention ? event.mention + ' ' : '';
+      const msg = `⏰ *Nhắc trước ${minutes} phút!*\n\n${mention}📌 *${event.title}*\n🕐 ${formatDateTime(new Date(event.datetime))}`;
+      try { await bot.sendMessage(event.chat_id, msg, { parse_mode: 'Markdown' }); } catch(e) {}
+    });
   });
 }
 
@@ -150,22 +153,24 @@ function repeatLabel(r) {
 function helpText() {
   return `👋 *Xin chào! Tôi là bot trợ lý lịch* 🗓
 
-Chỉ cần nhắn tin tự nhiên, tôi sẽ hiểu:
+Chỉ cần tag tôi và nhắn tự nhiên:
 
 📌 *Tạo lịch:*
 • _họp team 2h chiều mai_
 • _nhắc @Nam báo cáo thứ 2 tuần sau 9h_
+• _deadline 25/12 lúc 10h, nhắc trước 30 phút_
 • _uống thuốc 8h sáng hàng ngày_
-• _deadline project 25/12 lúc 10h_
+
+⏰ *Nhắc trước:*
+• _họp 3h chiều, nhắc trước 20 phút và 10 phút_
+• _nhắc trước 1 tiếng_
 
 📋 *Xem lịch:*
 • /today — lịch hôm nay
 • /list — tất cả lịch sắp tới
 
 🗑 *Xóa lịch:*
-• /delete\\_[id] — ví dụ /delete\\_3
-
-❓ /help — xem hướng dẫn này`;
+• /delete\\_[id] — ví dụ /delete\\_3`;
 }
 
 // ─── Main message handler ─────────────────────────────────────────────────────
@@ -175,9 +180,7 @@ async function handleMessage(msg) {
   const username = msg.from.username ? '@' + msg.from.username : msg.from.first_name;
   const text = (msg.text || '').trim();
 
-  if (!text || text === '/start') {
-    return bot.sendMessage(chatId, helpText(), { parse_mode: 'Markdown' });
-  }
+  if (!text || text === '/start') return bot.sendMessage(chatId, helpText(), { parse_mode: 'Markdown' });
 
   const deleteMatch = text.match(/^\/delete[_ ](\d+)$/i);
   if (deleteMatch) {
@@ -195,34 +198,37 @@ async function handleMessage(msg) {
     if (parsed.action === 'help') return bot.sendMessage(chatId, helpText(), { parse_mode: 'Markdown' });
     if (parsed.action === 'today') return handleToday(chatId);
     if (parsed.action === 'list') return handleList(chatId);
-    if (parsed.action === 'delete') {
-      return bot.sendMessage(chatId, '🗑 Dùng /list để xem ID, rồi gõ `/delete_3`', { parse_mode: 'Markdown' });
-    }
+    if (parsed.action === 'delete') return bot.sendMessage(chatId, '🗑 Dùng /list rồi gõ `/delete_3`', { parse_mode: 'Markdown' });
 
     if (parsed.action === 'create') {
       if (!parsed.datetime) {
-        return bot.sendMessage(chatId,
-          `⚠️ Tôi chưa rõ *thời gian*.\n\nVí dụ: _"họp team 2h chiều mai"_`,
-          { parse_mode: 'Markdown' });
+        return bot.sendMessage(chatId, `⚠️ Tôi chưa rõ *thời gian*.\n\nVí dụ: _"họp team 2h chiều mai"_`, { parse_mode: 'Markdown' });
       }
+
+      const remindBefore = Array.isArray(parsed.remind_before) ? parsed.remind_before : [];
       const ev = db.addEvent({
         chat_id: chatId, user_id: userId, created_by: username,
         title: parsed.title, datetime: parsed.datetime,
         repeat: parsed.repeat || 'none',
-        mention: parsed.mention || null, note: parsed.note || null,
+        mention: parsed.mention || null,
+        note: parsed.note || null,
+        remind_before: JSON.stringify(remindBefore),
       });
       scheduleJob(ev);
+
       const dt = new Date(parsed.datetime);
+      const remindText = remindBefore.length > 0
+        ? `⏰ Nhắc trước: ${remindBefore.map(m => m >= 60 ? m/60 + ' tiếng' : m + ' phút').join(', ')}\n`
+        : '';
+
       return bot.sendMessage(chatId,
         `✅ *Đã tạo lịch!*\n\n📌 *${ev.title}*\n🕐 ${formatDateTime(dt)}\n${repeatLabel(ev.repeat)}\n` +
-        `${ev.mention ? '👤 ' + ev.mention + '\n' : ''}${ev.note ? '📝 ' + ev.note + '\n' : ''}` +
-        `🆔 ID: \`${ev.id}\`\n\n_Bot sẽ nhắc đúng giờ_ 🔔`,
+        `${ev.mention ? '👤 ' + ev.mention + '\n' : ''}${remindText}` +
+        `${ev.note ? '📝 ' + ev.note + '\n' : ''}🆔 ID: \`${ev.id}\`\n\n_Bot sẽ nhắc đúng giờ_ 🔔`,
         { parse_mode: 'Markdown' });
     }
 
-    return bot.sendMessage(chatId,
-      `🤔 Tôi chưa hiểu. Thử: _"họp team 3h chiều mai"_ hoặc /help`,
-      { parse_mode: 'Markdown' });
+    return bot.sendMessage(chatId, `🤔 Tôi chưa hiểu. Thử: _"họp team 3h chiều mai"_ hoặc /help`, { parse_mode: 'Markdown' });
 
   } catch (err) {
     console.error('Lỗi xử lý tin nhắn:', err);
@@ -246,13 +252,14 @@ function handleList(chatId) {
   if (!events.length) return bot.sendMessage(chatId, '📭 Không có lịch nào sắp tới!');
   const lines = events.slice(0, 10).map((ev, i) => {
     const dt = new Date(ev.datetime);
-    return `${i + 1}. *${ev.title}*\n   🕐 ${formatDateTime(dt)}\n   ${repeatLabel(ev.repeat)} · \`/delete_${ev.id}\``;
+    const remindBefore = ev.remind_before ? JSON.parse(ev.remind_before) : [];
+    const remindText = remindBefore.length > 0 ? ` · ⏰ ${remindBefore.join(', ')} phút` : '';
+    return `${i + 1}. *${ev.title}*\n   🕐 ${formatDateTime(dt)}\n   ${repeatLabel(ev.repeat)}${remindText} · \`/delete_${ev.id}\``;
   }).join('\n\n');
-  bot.sendMessage(chatId,
-    `📋 *Lịch sắp tới (${Math.min(events.length,10)}/${events.length}):*\n\n${lines}`,
-    { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, `📋 *Lịch sắp tới (${Math.min(events.length,10)}/${events.length}):*\n\n${lines}`, { parse_mode: 'Markdown' });
 }
 
+// ─── Command handlers ─────────────────────────────────────────────────────────
 bot.onText(/\/today/, (msg) => handleToday(msg.chat.id));
 bot.onText(/\/list/, (msg) => handleList(msg.chat.id));
 bot.onText(/\/help/, (msg) => bot.sendMessage(msg.chat.id, helpText(), { parse_mode: 'Markdown' }));
@@ -260,20 +267,27 @@ bot.onText(/\/delete[_ ](\d+)/, (msg) => handleMessage(msg));
 bot.on('message', (msg) => {
   if (!msg.text) return;
   const text = msg.text.trim();
-  const botUsername = '@dieuthuyen_csbot';
 
-  // Trong group: chỉ phản hồi khi được tag hoặc dùng lệnh /
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
-    const isMentioned = text.toLowerCase().includes(botUsername.toLowerCase());
+    const isMentioned = text.toLowerCase().includes(BOT_USERNAME.toLowerCase());
     const isCommand = text.startsWith('/');
     if (!isMentioned && !isCommand) return;
-    // Xóa @botname khỏi text trước khi xử lý
-    msg.text = text.replace(new RegExp(botUsername, 'gi'), '').trim();
+    msg.text = text.replace(new RegExp(BOT_USERNAME, 'gi'), '').trim();
   }
 
-  if (!text.startsWith('/')) handleMessage(msg);
-  else if (text.startsWith('/start')) handleMessage(msg);
+  if (!msg.text.startsWith('/')) handleMessage(msg);
+  else if (msg.text.startsWith('/start')) handleMessage(msg);
 });
+
+// ─── Update db schema for remind_before ──────────────────────────────────────
+const fs = require('fs');
+const path = require('path');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'events.json');
+try {
+  const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+  data.events = data.events.map(e => ({ remind_before: '[]', ...e }));
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+} catch(e) {}
 
 restoreJobs();
 console.log('🤖 Bot nhắc lịch đang chạy (Groq AI)...');
