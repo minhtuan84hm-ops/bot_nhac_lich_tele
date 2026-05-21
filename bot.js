@@ -4,25 +4,46 @@ const db = require('./db');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = '@dieuthuyen_csbot';
-
-// Xóa webhook cũ
-fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`)
-  .then(() => console.log('✅ Đã xóa webhook cũ'))
-  .catch(e => console.log('webhook delete:', e.message));
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || '';
 
 const bot = new TelegramBot(token, { polling: false });
-setTimeout(() => { bot.startPolling({ restart: false }); console.log('✅ Bắt đầu polling...'); }, 3000);
 
-bot.on('polling_error', (err) => {
-  if (err.message && err.message.includes('409')) {
-    console.log('⚠️ Conflict 409, dừng 10s...');
-    bot.stopPolling();
-    setTimeout(() => {
-      fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`)
-        .then(() => bot.startPolling({ restart: false }))
-        .catch(e => console.log(e.message));
-    }, 10000);
-  } else console.error('Polling error:', err.message);
+// HTTP server
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+const server = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === `/webhook/${token}`) {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const update = JSON.parse(body);
+        bot.processUpdate(update);
+      } catch(e) {}
+      res.end('OK');
+    });
+  } else {
+    res.end('Bot đang chạy!');
+  }
+});
+
+server.listen(PORT, async () => {
+  console.log(`✅ HTTP server chạy trên port ${PORT}`);
+  if (RENDER_URL) {
+    // Dùng webhook trên Render
+    const webhookUrl = `${RENDER_URL}/webhook/${token}`;
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}&drop_pending_updates=true`);
+      console.log('✅ Webhook đã set:', webhookUrl);
+    } catch(e) {
+      console.error('Lỗi set webhook:', e.message);
+    }
+  } else {
+    // Dùng polling ở local
+    await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`);
+    bot.startPolling({ restart: false });
+    console.log('✅ Bắt đầu polling (local)...');
+  }
 });
 
 // ─── Groq AI parser ───────────────────────────────────────────────────────────
@@ -344,9 +365,4 @@ bot.on('message', (msg) => {
 restoreJobs();
 console.log('🤖 Bot nhắc lịch đang chạy (Groq AI)...');
 
-// HTTP server để Render không timeout
-const http = require('http');
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => res.end('Bot đang chạy!')).listen(PORT, () => {
-  console.log(`✅ HTTP server chạy trên port ${PORT}`);
-});
+
