@@ -64,7 +64,9 @@ Quy tắc:
 
   let raw = data.choices[0].message.content.trim();
   raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-  return JSON.parse(raw);
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) raw = match[0];
+  try { return JSON.parse(raw); } catch(e) { return { action: 'unknown' }; }
 }
 
 // ─── Schedule a notification job ─────────────────────────────────────────────
