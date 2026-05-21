@@ -126,6 +126,7 @@ function scheduleJob(event) {
 // ─── Restore jobs on startup ──────────────────────────────────────────────────
 async function restoreJobs() {
   try {
+    await new Promise(r => setTimeout(r, 2000)); // wait for db
     const events = await db.getAllEvents();
     let count = 0;
     for (const ev of events) {
@@ -246,21 +247,39 @@ async function handleToday(chatId) {
   const lines = events.map((ev, i) => {
     const dt = new Date(ev.datetime);
     const time = dt.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' });
-    return `${i + 1}. *${ev.title}* — ${time}${ev.mention ? ' ' + ev.mention : ''} \`#${ev.id}\``;
+    return `${i + 1}. *${ev.title}* — ${time}${ev.mention ? ' ' + ev.mention : ''}`;
   }).join('\n');
-  bot.sendMessage(chatId, `📅 *Lịch hôm nay:*\n\n${lines}`, { parse_mode: 'Markdown' });
+
+  const inline_keyboard = events.map(ev => ([{
+    text: `🗑 Xóa: ${ev.title.substring(0, 20)}`,
+    callback_data: `del_${ev.id}`
+  }]));
+
+  bot.sendMessage(chatId, `📅 *Lịch hôm nay:*\n\n${lines}`,
+    { parse_mode: 'Markdown', reply_markup: { inline_keyboard } }
+  );
 }
 
 async function handleList(chatId) {
   const events = await db.getUpcomingEvents(chatId);
   if (!events.length) return bot.sendMessage(chatId, '📭 Không có lịch nào sắp tới!');
-  const lines = events.slice(0, 10).map((ev, i) => {
+  const top = events.slice(0, 10);
+  const lines = top.map((ev, i) => {
     const dt = new Date(ev.datetime);
     const remindBefore = ev.remind_before ? JSON.parse(ev.remind_before) : [];
     const remindText = remindBefore.length > 0 ? ` · ⏰ ${remindBefore.join(', ')} phút` : '';
-    return `${i + 1}. *${ev.title}*\n   🕐 ${formatDateTime(dt)}\n   ${repeatLabel(ev.repeat)}${remindText} · \`/delete_${ev.id}\``;
+    return `${i + 1}. *${ev.title}*\n   🕐 ${formatDateTime(dt)}\n   ${repeatLabel(ev.repeat)}${remindText}`;
   }).join('\n\n');
-  bot.sendMessage(chatId, `📋 *Lịch sắp tới (${Math.min(events.length,10)}/${events.length}):*\n\n${lines}`, { parse_mode: 'Markdown' });
+
+  const inline_keyboard = top.map(ev => ([{
+    text: `🗑 Xóa: ${ev.title.substring(0, 20)}`,
+    callback_data: `del_${ev.id}`
+  }]));
+
+  bot.sendMessage(chatId,
+    `📋 *Lịch sắp tới (${Math.min(events.length,10)}/${events.length}):*\n\n${lines}`,
+    { parse_mode: 'Markdown', reply_markup: { inline_keyboard } }
+  );
 }
 
 // ─── Command handlers ─────────────────────────────────────────────────────────
@@ -281,6 +300,32 @@ bot.on('message', (msg) => {
 
   if (!msg.text.startsWith('/')) handleMessage(msg);
   else if (msg.text.startsWith('/start')) handleMessage(msg);
+});
+
+// ─── Xử lý nút bấm inline keyboard ──────────────────────────────────────────
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  if (data.startsWith('del_')) {
+    const id = parseInt(data.replace('del_', ''));
+    const ok = await db.deleteEventByChat(id, chatId);
+    const jobId = `event_${id}`;
+    if (schedule.scheduledJobs[jobId]) schedule.scheduledJobs[jobId].cancel();
+    await bot.answerCallbackQuery(query.id, {
+      text: ok ? '✅ Đã xóa lịch!' : '❌ Không tìm thấy lịch!'
+    });
+    if (ok) {
+      // Cập nhật lại message — xóa nút đã bấm
+      try {
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          { chat_id: chatId, message_id: query.message.message_id }
+        );
+        await bot.sendMessage(chatId, `✅ Đã xóa lịch *#${id}*`, { parse_mode: 'Markdown' });
+      } catch(e) {}
+    }
+  }
 });
 
 restoreJobs();
