@@ -5,7 +5,7 @@ const db = require('./db');
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const gemini = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const gemini = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 // ─── Gemini parser: extract event from natural language ──────────────────────
 async function parseEventFromText(text) {
