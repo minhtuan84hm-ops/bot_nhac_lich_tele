@@ -84,10 +84,16 @@ async function getTodayEvents(chatId) {
   return res.rows;
 }
 
-async function getAllEventsForChat(chatId) {
+async function getAllEventsForChat(chatId, userId) {
   const db = await getClient();
-  const res = await db.query('SELECT * FROM events WHERE chat_id=$1 ORDER BY datetime ASC', [chatId]);
-  return res.rows;
+  // Lấy lịch của chat này HOẶC lịch do user này tạo (để xem từ mọi nơi)
+  const res = await db.query(
+    'SELECT * FROM events WHERE chat_id=$1 OR user_id=$2 ORDER BY datetime ASC',
+    [chatId, userId]
+  );
+  // Dedup by id
+  const seen = new Set();
+  return res.rows.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
 }
 
 async function deleteEvent(id) {

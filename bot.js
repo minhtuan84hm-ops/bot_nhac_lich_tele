@@ -188,10 +188,10 @@ function getDateRange(type) {
   }
 }
 
-async function showByRange(chatId, type, label) {
+async function showByRange(chatId, userId, type, label) {
   try {
     const { start, end } = getDateRange(type);
-    const all = await db.getAllEventsForChat(chatId);
+    const all = await db.getAllEventsForChat(chatId, userId || 0);
     const filtered = all.filter(ev => {
       const dt = new Date(ev.datetime);
       return dt >= start && dt <= end;
@@ -213,12 +213,12 @@ async function handleMessage(msg) {
   if (!text || text === '/start') return sendMainMenu(chatId);
 
   // Menu buttons
-  if (text === '📅 Hôm nay') return showByRange(chatId, 'today', 'Hôm nay');
-  if (text === '📅 Ngày mai') return showByRange(chatId, 'tomorrow', 'Ngày mai');
-  if (text === '📆 Tuần này') return showByRange(chatId, 'this_week', 'Tuần này');
-  if (text === '📆 Tuần sau') return showByRange(chatId, 'next_week', 'Tuần sau');
+  if (text === '📅 Hôm nay') return showByRange(chatId, userId, 'today', 'Hôm nay');
+  if (text === '📅 Ngày mai') return showByRange(chatId, userId, 'tomorrow', 'Ngày mai');
+  if (text === '📆 Tuần này') return showByRange(chatId, userId, 'this_week', 'Tuần này');
+  if (text === '📆 Tuần sau') return showByRange(chatId, userId, 'next_week', 'Tuần sau');
   if (text === '📋 Tất cả lịch') {
-    const events = await db.getAllEventsForChat(chatId);
+    const events = await db.getAllEventsForChat(chatId, msg.from.id);
     const upcoming = events.filter(ev => ev.repeat !== 'none' || new Date(ev.datetime) > new Date())
       .sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
     return showEvents(chatId, upcoming, 'Tất cả lịch');
@@ -238,9 +238,9 @@ async function handleMessage(msg) {
     await bot.sendChatAction(chatId, 'typing');
     const parsed = await parseEventFromText(text);
     if (parsed.action === 'help') return bot.sendMessage(chatId, helpText(), { parse_mode: 'Markdown' });
-    if (parsed.action === 'today') return showByRange(chatId, 'today', 'Hôm nay');
+    if (parsed.action === 'today') return showByRange(chatId, userId, 'today', 'Hôm nay');
     if (parsed.action === 'list') {
-      const events = await db.getAllEventsForChat(chatId);
+      const events = await db.getAllEventsForChat(chatId, msg.from.id);
       const upcoming = events.filter(ev => ev.repeat !== 'none' || new Date(ev.datetime) > new Date())
         .sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
       return showEvents(chatId, upcoming, 'Tất cả lịch');
@@ -306,9 +306,9 @@ bot.on('callback_query', async (query) => {
 
 // ─── Command + message handlers ──────────────────────────────────────────────
 bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id));
-bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, 'today', 'Hôm nay'));
+bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay'));
 bot.onText(/\/list/, async (msg) => {
-  const events = await db.getAllEventsForChat(msg.chat.id);
+  const events = await db.getAllEventsForChat(msg.chat.id, msg.from.id);
   const upcoming = events.filter(ev => ev.repeat !== 'none' || new Date(ev.datetime) > new Date());
   showEvents(msg.chat.id, upcoming, 'Tất cả lịch');
 });
