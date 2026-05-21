@@ -1,14 +1,15 @@
 {
   "name": "telegram-calendar-bot",
-  "version": "4.0.0",
-  "description": "Telegram bot nhắc lịch dùng Groq AI (miễn phí)",
+  "version": "5.0.0",
+  "description": "Telegram bot nhắc lịch - Groq AI + Supabase",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
     "node-schedule": "^2.1.1",
-    "node-telegram-bot-api": "^0.66.0"
+    "node-telegram-bot-api": "^0.66.0",
+    "pg": "^8.11.0"
   },
   "engines": {
     "node": "20.x"

@@ -124,17 +124,21 @@ function scheduleJob(event) {
 }
 
 // ─── Restore jobs on startup ──────────────────────────────────────────────────
-function restoreJobs() {
-  const events = db.getAllEvents();
-  let count = 0;
-  for (const ev of events) {
-    if (!ev.datetime) continue;
-    const dt = new Date(ev.datetime);
-    if (ev.repeat === 'none' && dt <= new Date()) { db.deleteEvent(ev.id); continue; }
-    scheduleJob(ev);
-    count++;
+async function restoreJobs() {
+  try {
+    const events = await db.getAllEvents();
+    let count = 0;
+    for (const ev of events) {
+      if (!ev.datetime) continue;
+      const dt = new Date(ev.datetime);
+      if (ev.repeat === 'none' && dt <= new Date()) { await db.deleteEvent(ev.id); continue; }
+      scheduleJob(ev);
+      count++;
+    }
+    console.log(`✅ Khôi phục ${count} lịch nhắc`);
+  } catch(e) {
+    console.error('Lỗi khôi phục lịch:', e.message);
   }
-  console.log(`✅ Khôi phục ${count} lịch nhắc`);
 }
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -185,7 +189,7 @@ async function handleMessage(msg) {
   const deleteMatch = text.match(/^\/delete[_ ](\d+)$/i);
   if (deleteMatch) {
     const id = parseInt(deleteMatch[1]);
-    const ok = db.deleteEventByChat(id, chatId);
+    const ok = await db.deleteEventByChat(id, chatId);
     const jobId = `event_${id}`;
     if (schedule.scheduledJobs[jobId]) schedule.scheduledJobs[jobId].cancel();
     return bot.sendMessage(chatId, ok ? `✅ Đã xóa lịch #${id}` : `❌ Không tìm thấy lịch #${id}`);
@@ -206,7 +210,7 @@ async function handleMessage(msg) {
       }
 
       const remindBefore = Array.isArray(parsed.remind_before) ? parsed.remind_before : [];
-      const ev = db.addEvent({
+      const ev = await db.addEvent({
         chat_id: chatId, user_id: userId, created_by: username,
         title: parsed.title, datetime: parsed.datetime,
         repeat: parsed.repeat || 'none',
@@ -236,8 +240,8 @@ async function handleMessage(msg) {
   }
 }
 
-function handleToday(chatId) {
-  const events = db.getTodayEvents(chatId);
+async function handleToday(chatId) {
+  const events = await db.getTodayEvents(chatId);
   if (!events.length) return bot.sendMessage(chatId, '📭 Hôm nay không có lịch nào!');
   const lines = events.map((ev, i) => {
     const dt = new Date(ev.datetime);
@@ -247,8 +251,8 @@ function handleToday(chatId) {
   bot.sendMessage(chatId, `📅 *Lịch hôm nay:*\n\n${lines}`, { parse_mode: 'Markdown' });
 }
 
-function handleList(chatId) {
-  const events = db.getUpcomingEvents(chatId);
+async function handleList(chatId) {
+  const events = await db.getUpcomingEvents(chatId);
   if (!events.length) return bot.sendMessage(chatId, '📭 Không có lịch nào sắp tới!');
   const lines = events.slice(0, 10).map((ev, i) => {
     const dt = new Date(ev.datetime);
@@ -278,16 +282,6 @@ bot.on('message', (msg) => {
   if (!msg.text.startsWith('/')) handleMessage(msg);
   else if (msg.text.startsWith('/start')) handleMessage(msg);
 });
-
-// ─── Update db schema for remind_before ──────────────────────────────────────
-const fs = require('fs');
-const path = require('path');
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'events.json');
-try {
-  const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-  data.events = data.events.map(e => ({ remind_before: '[]', ...e }));
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-} catch(e) {}
 
 restoreJobs();
 console.log('🤖 Bot nhắc lịch đang chạy (Groq AI)...');

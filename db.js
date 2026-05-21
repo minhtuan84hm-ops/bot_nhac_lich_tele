@@ -1,65 +1,81 @@
-const fs = require('fs');
-const path = require('path');
+const { Client } = require('pg');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'events.json');
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+let client;
 
-function read() {
-  try {
-    return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-  } catch {
-    return { events: [], nextId: 1 };
-  }
+async function getClient() {
+  if (client) return client;
+  client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+  await client.connect();
+
+  // Tạo bảng nếu chưa có
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS events (
+      id           SERIAL PRIMARY KEY,
+      chat_id      BIGINT NOT NULL,
+      user_id      BIGINT NOT NULL,
+      created_by   TEXT,
+      title        TEXT NOT NULL,
+      datetime     TEXT,
+      repeat       TEXT DEFAULT 'none',
+      mention      TEXT,
+      note         TEXT,
+      remind_before TEXT DEFAULT '[]',
+      created_at   TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  console.log('✅ Kết nối database thành công!');
+  return client;
 }
 
-function write(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+async function addEvent(data) {
+  const db = await getClient();
+  const res = await db.query(
+    `INSERT INTO events (chat_id, user_id, created_by, title, datetime, repeat, mention, note, remind_before)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [data.chat_id, data.user_id, data.created_by, data.title, data.datetime,
+     data.repeat||'none', data.mention||null, data.note||null, data.remind_before||'[]']
+  );
+  return res.rows[0];
 }
 
-function addEvent(data) {
-  const db = read();
-  const event = { id: db.nextId++, ...data };
-  db.events.push(event);
-  write(db);
-  return event;
+async function getAllEvents() {
+  const db = await getClient();
+  const res = await db.query('SELECT * FROM events ORDER BY datetime ASC');
+  return res.rows;
 }
 
-function getAllEvents() {
-  return read().events;
+async function getUpcomingEvents(chatId) {
+  const db = await getClient();
+  const res = await db.query(
+    `SELECT * FROM events WHERE chat_id=$1 AND (repeat!='none' OR datetime > NOW() AT TIME ZONE 'UTC') ORDER BY datetime ASC`,
+    [chatId]
+  );
+  return res.rows;
 }
 
-function getUpcomingEvents(chatId) {
-  const now = new Date();
-  return read().events.filter(e =>
-    e.chat_id === chatId &&
-    (e.repeat !== 'none' || new Date(e.datetime) >= now)
-  ).sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+async function getTodayEvents(chatId) {
+  const db = await getClient();
+  const res = await db.query(
+    `SELECT * FROM events WHERE chat_id=$1
+     AND (datetime AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+     ORDER BY datetime ASC`,
+    [chatId]
+  );
+  return res.rows;
 }
 
-function getTodayEvents(chatId) {
-  const now = new Date();
-  const todayVN = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-  return read().events.filter(e => {
-    if (e.chat_id !== chatId) return false;
-    const dt = new Date(new Date(e.datetime).toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-    return dt.getFullYear() === todayVN.getFullYear() &&
-           dt.getMonth() === todayVN.getMonth() &&
-           dt.getDate() === todayVN.getDate();
-  }).sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+async function deleteEvent(id) {
+  const db = await getClient();
+  await db.query('DELETE FROM events WHERE id=$1', [id]);
 }
 
-function deleteEvent(id) {
-  const db = read();
-  db.events = db.events.filter(e => e.id !== id);
-  write(db);
-}
-
-function deleteEventByChat(id, chatId) {
-  const db = read();
-  const before = db.events.length;
-  db.events = db.events.filter(e => !(e.id === id && e.chat_id === chatId));
-  write(db);
-  return db.events.length < before;
+async function deleteEventByChat(id, chatId) {
+  const db = await getClient();
+  const res = await db.query('DELETE FROM events WHERE id=$1 AND chat_id=$2', [id, chatId]);
+  return res.rowCount > 0;
 }
 
 module.exports = { addEvent, getAllEvents, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat };
