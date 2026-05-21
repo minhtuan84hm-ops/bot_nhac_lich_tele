@@ -1,7 +1,7 @@
 {
   "name": "telegram-calendar-bot",
   "version": "2.0.0",
-  "description": "Telegram bot nhắc lịch dùng Google Gemini AI (miễn phí)",
+  "description": "Telegram bot nhắc lịch dùng Google Gemini AI",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
@@ -17,6 +17,6 @@
     "nodemon": "^3.1.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   }
 }
