@@ -345,3 +345,10 @@ bot.on('message', (msg) => {
 
 restoreJobs();
 console.log('🤖 Bot nhắc lịch đang chạy (Groq AI)...');
+
+// HTTP server để Render không timeout
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('Bot đang chạy!')).listen(PORT, () => {
+  console.log(`✅ HTTP server chạy trên port ${PORT}`);
+});
