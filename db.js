@@ -5,15 +5,29 @@ let client;
 async function getClient() {
   if (client) return client;
   const url = process.env.DATABASE_URL;
-  console.log('DATABASE_URL prefix:', url ? url.substring(0, 30) + '...' : 'KHÔNG CÓ!');
   if (!url) throw new Error('DATABASE_URL chưa được set!');
-  client = new Client({
-    connectionString: url,
-    ssl: { rejectUnauthorized: false }
-  });
-  await client.connect();
+  console.log('Connecting to DB:', url.substring(0, 40) + '...');
+  
+  try {
+    // Parse URL thủ công để tránh lỗi ký tự đặc biệt trong password
+    const parsed = new URL(url);
+    client = new Client({
+      host: parsed.hostname,
+      port: parseInt(parsed.port) || 5432,
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      database: parsed.pathname.replace('/', ''),
+      ssl: { rejectUnauthorized: false },
+    });
+  } catch(e) {
+    // Fallback: dùng connectionString trực tiếp
+    client = new Client({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+    });
+  }
 
-  // Tạo bảng nếu chưa có
+  await client.connect();
   await client.query(`
     CREATE TABLE IF NOT EXISTS events (
       id           SERIAL PRIMARY KEY,
@@ -53,7 +67,7 @@ async function getAllEvents() {
 async function getUpcomingEvents(chatId) {
   const db = await getClient();
   const res = await db.query(
-    `SELECT * FROM events WHERE chat_id=$1 AND (repeat!='none' OR datetime > NOW() AT TIME ZONE 'UTC') ORDER BY datetime ASC`,
+    `SELECT * FROM events WHERE chat_id=$1 AND (repeat!='none' OR datetime::timestamp > NOW()) ORDER BY datetime ASC`,
     [chatId]
   );
   return res.rows;
@@ -63,7 +77,7 @@ async function getTodayEvents(chatId) {
   const db = await getClient();
   const res = await db.query(
     `SELECT * FROM events WHERE chat_id=$1
-     AND (datetime AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+     AND (datetime::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
      ORDER BY datetime ASC`,
     [chatId]
   );
