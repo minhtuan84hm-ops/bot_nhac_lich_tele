@@ -2,14 +2,29 @@ const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 const db = require('./db');
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
-  polling: { autoStart: true, params: { timeout: 10 } }
-});
+// Xóa webhook cũ trước khi polling để tránh conflict
+const token = process.env.TELEGRAM_BOT_TOKEN;
+fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`)
+  .then(() => console.log('✅ Đã xóa webhook cũ'))
+  .catch(e => console.log('webhook delete:', e.message));
+
+const bot = new TelegramBot(token, { polling: false });
+
+// Delay 3s rồi mới bắt đầu polling để tránh conflict
+setTimeout(() => {
+  bot.startPolling({ restart: false });
+  console.log('✅ Bắt đầu polling...');
+}, 3000);
 
 bot.on('polling_error', (err) => {
   if (err.message && err.message.includes('409')) {
-    console.log('⚠️ Conflict, thử lại sau 5s...');
-    setTimeout(() => { try { bot.startPolling(); } catch(e) {} }, 5000);
+    console.log('⚠️ Conflict 409, dừng polling 10s...');
+    bot.stopPolling();
+    setTimeout(() => {
+      fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`)
+        .then(() => bot.startPolling({ restart: false }))
+        .catch(e => console.log(e.message));
+    }, 10000);
   } else {
     console.error('Polling error:', err.message);
   }
@@ -244,8 +259,20 @@ bot.onText(/\/help/, (msg) => bot.sendMessage(msg.chat.id, helpText(), { parse_m
 bot.onText(/\/delete[_ ](\d+)/, (msg) => handleMessage(msg));
 bot.on('message', (msg) => {
   if (!msg.text) return;
-  if (!msg.text.startsWith('/')) handleMessage(msg);
-  else if (msg.text.startsWith('/start')) handleMessage(msg);
+  const text = msg.text.trim();
+  const botUsername = '@dieuthyen_bot';
+
+  // Trong group: chỉ phản hồi khi được tag hoặc dùng lệnh /
+  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    const isMentioned = text.toLowerCase().includes(botUsername.toLowerCase());
+    const isCommand = text.startsWith('/');
+    if (!isMentioned && !isCommand) return;
+    // Xóa @botname khỏi text trước khi xử lý
+    msg.text = text.replace(new RegExp(botUsername, 'gi'), '').trim();
+  }
+
+  if (!text.startsWith('/')) handleMessage(msg);
+  else if (text.startsWith('/start')) handleMessage(msg);
 });
 
 restoreJobs();
