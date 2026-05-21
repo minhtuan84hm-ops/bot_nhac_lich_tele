@@ -12,17 +12,31 @@ const bot = new TelegramBot(token, { polling: false });
 const http = require('http');
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === `/webhook/${token}`) {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      try {
-        const update = JSON.parse(body);
-        bot.processUpdate(update);
-      } catch(e) {}
-      res.end('OK');
-    });
+  const webhookPath = `/webhook/${token}`;
+  console.log(`[HTTP] ${req.method} ${req.url}`);
+  if (req.url === webhookPath) {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const update = JSON.parse(body);
+          console.log('[Webhook] Nhận update:', JSON.stringify(update).substring(0, 100));
+          bot.processUpdate(update);
+          res.writeHead(200);
+          res.end('OK');
+        } catch(e) {
+          console.error('[Webhook] Parse lỗi:', e.message);
+          res.writeHead(400);
+          res.end('Bad Request');
+        }
+      });
+    } else {
+      res.writeHead(200);
+      res.end('Webhook OK');
+    }
   } else {
+    res.writeHead(200);
     res.end('Bot đang chạy!');
   }
 });
