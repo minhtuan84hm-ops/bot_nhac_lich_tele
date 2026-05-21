@@ -317,7 +317,6 @@ bot.on('callback_query', async (query) => {
 });
 
 // ─── Command + message handlers ──────────────────────────────────────────────
-bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id));
 bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
 bot.onText(/\/list/, async (msg) => {
   const isGrp = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
@@ -340,7 +339,6 @@ bot.on('message', (msg) => {
     msg.text = text.replace(new RegExp(BOT_USERNAME, 'gi'), '').trim();
   }
   if (!msg.text.startsWith('/')) handleMessage(msg);
-  else if (msg.text.startsWith('/start')) handleMessage(msg);
 });
 
 restoreJobs();
