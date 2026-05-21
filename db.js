@@ -108,7 +108,8 @@ async function deleteEvent(id) {
 
 async function deleteEventByChat(id, chatId) {
   const db = await getClient();
-  const res = await db.query('DELETE FROM events WHERE id=$1 AND chat_id=$2', [id, chatId]);
+  // Xóa theo id thôi, không check chat_id để cho phép xóa từ mọi nơi
+  const res = await db.query('DELETE FROM events WHERE id=$1', [id]);
   return res.rowCount > 0;
 }
 
