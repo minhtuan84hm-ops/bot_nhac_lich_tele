@@ -374,6 +374,7 @@ bot.on('new_chat_members', async (msg) => {
     bot.sendMessage(msg.chat.id, `👋 Xin chào! Tôi là bot trợ lý lịch!\n\n✅ Đã đăng ký nhóm *${msg.chat.title}*\n\nGõ /getid để lấy ID nhóm này!`, { parse_mode: 'Markdown' });
   }
 });
+bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id));
 bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
 bot.onText(/\/list/, async (msg) => {
   const isGrp = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
