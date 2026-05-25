@@ -74,7 +74,8 @@ JSON:
   "repeat": "none"|"daily"|"weekly",
   "remind_before": [số phút],
   "mention": "@user1 @user2 hoặc null",
-  "note": "ghi chú hoặc null"
+  "note": "ghi chú hoặc null",
+  "target_group": "tên nhóm hoặc null"
 }
 Quy tắc:
 - "chiều mai 2h"=ngày mai 14:00, "sáng mai 9h"=ngày mai 09:00, "tối nay 8h"=hôm nay 20:00, "chiều nay 5h"=hôm nay 17:00
@@ -87,7 +88,8 @@ Quy tắc:
 - "lịch ngày mai" hoặc "ngày mai có lịch" → action="tomorrow"
 - "lịch tuần này" hoặc "tuần này có gì" → action="this_week"
 - "lịch tuần sau" hoặc "tuần sau có gì" → action="next_week"
-- /list hoặc "xem lịch" hoặc "tất cả lịch" → action="list"`;
+- /list hoặc "xem lịch" hoặc "tất cả lịch" → action="list"
+- "gửi vào nhóm X" hoặc "nhắn vào nhóm X" → target_group = "X"`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -353,6 +355,25 @@ bot.on('callback_query', async (query) => {
 
 // ─── Command + message handlers ──────────────────────────────────────────────
 bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id));
+bot.onText(/\/getid/, async (msg) => {
+  const chatId = msg.chat.id;
+  const chatName = msg.chat.title || msg.chat.first_name || 'Chat này';
+  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    await db.registerGroup(chatId, chatName);
+  }
+  bot.sendMessage(chatId, `🆔 *${chatName}*\nChat ID: \`${chatId}\`\n\n✅ Đã đăng ký nhóm này! Giờ bạn có thể tạo lịch từ chat riêng và gửi vào nhóm này.`, { parse_mode: 'Markdown' });
+});
+
+// Auto register group khi bot được thêm vào
+bot.on('new_chat_members', async (msg) => {
+  const newMembers = msg.new_chat_members;
+  const botInfo = await bot.getMe();
+  const isBotAdded = newMembers.some(m => m.id === botInfo.id);
+  if (isBotAdded && (msg.chat.type === 'group' || msg.chat.type === 'supergroup')) {
+    await db.registerGroup(msg.chat.id, msg.chat.title);
+    bot.sendMessage(msg.chat.id, `👋 Xin chào! Tôi là bot trợ lý lịch!\n\n✅ Đã đăng ký nhóm *${msg.chat.title}*\n\nGõ /getid để lấy ID nhóm này!`, { parse_mode: 'Markdown' });
+  }
+});
 bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
 bot.onText(/\/list/, async (msg) => {
   const isGrp = msg.chat.type === 'group' || msg.chat.type === 'supergroup';

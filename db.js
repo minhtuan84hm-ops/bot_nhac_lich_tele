@@ -40,20 +40,54 @@ async function getClient() {
       mention      TEXT,
       note         TEXT,
       remind_before TEXT DEFAULT '[]',
+      target_chat_id BIGINT,
       created_at   TIMESTAMP DEFAULT NOW()
     )
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS groups (
+      chat_id    BIGINT PRIMARY KEY,
+      name       TEXT,
+      registered_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  // Add target_chat_id column if not exists
+  await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS target_chat_id BIGINT`).catch(() => {});
   console.log('✅ Kết nối database thành công!');
   return client;
+}
+
+async function registerGroup(chatId, name) {
+  const db = await getClient();
+  await db.query(
+    `INSERT INTO groups (chat_id, name) VALUES ($1, $2)
+     ON CONFLICT (chat_id) DO UPDATE SET name=$2`,
+    [chatId, name]
+  );
+}
+
+async function getGroups() {
+  const db = await getClient();
+  const res = await db.query('SELECT * FROM groups ORDER BY name ASC');
+  return res.rows;
+}
+
+async function findGroupByName(name) {
+  const db = await getClient();
+  const res = await db.query(
+    `SELECT * FROM groups WHERE LOWER(name) LIKE LOWER($1) LIMIT 1`,
+    [`%${name}%`]
+  );
+  return res.rows[0] || null;
 }
 
 async function addEvent(data) {
   const db = await getClient();
   const res = await db.query(
-    `INSERT INTO events (chat_id, user_id, created_by, title, datetime, repeat, mention, note, remind_before)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    `INSERT INTO events (chat_id, user_id, created_by, title, datetime, repeat, mention, note, remind_before, target_chat_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [data.chat_id, data.user_id, data.created_by, data.title, data.datetime,
-     data.repeat||'none', data.mention||null, data.note||null, data.remind_before||'[]']
+     data.repeat||'none', data.mention||null, data.note||null, data.remind_before||'[]', data.target_chat_id||null]
   );
   return res.rows[0];
 }
@@ -113,4 +147,4 @@ async function deleteEventByChat(id, chatId) {
   return res.rowCount > 0;
 }
 
-module.exports = { addEvent, getAllEvents, getAllEventsForChat, getAllEventsForGroup, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat };
+module.exports = { addEvent, getAllEvents, getAllEventsForChat, getAllEventsForGroup, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat, registerGroup, getGroups, findGroupByName };
