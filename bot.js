@@ -151,6 +151,12 @@ async function restoreJobs() {
   } catch(e) { console.error('Lỗi khôi phục lịch:', e.message); }
 }
 
+// ─── Escape markdown ─────────────────────────────────────────────────────────
+function escMd(text) {
+  if (!text) return '';
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\$&');
+}
+
 // ─── Format helpers ───────────────────────────────────────────────────────────
 function formatDateTime(dt) {
   return dt.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -374,7 +380,6 @@ bot.on('new_chat_members', async (msg) => {
     bot.sendMessage(msg.chat.id, `👋 Xin chào! Tôi là bot trợ lý lịch!\n\n✅ Đã đăng ký nhóm *${msg.chat.title}*\n\nGõ /getid để lấy ID nhóm này!`, { parse_mode: 'Markdown' });
   }
 });
-bot.onText(/\/start/, (msg) => sendMainMenu(msg.chat.id));
 bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
 bot.onText(/\/list/, async (msg) => {
   const isGrp = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
