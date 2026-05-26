@@ -367,16 +367,16 @@ bot.onText(/\/template (.+)/, async function(msg, match) {
   const createMatch = input.match(/^t[ao]o\s+"([^"]+)"\s+(.+)/i);
   if (createMatch) {
     const name = createMatch[1];
-    const content = createMatch[2];
+    const templateContent = createMatch[2];
     try {
       await bot.sendChatAction(chatId, 'typing');
-      const parsed = await parseEventFromText(content);
+      const parsed = await parseEventFromText(templateContent + ' luc 12h trua');
       delete parsed.datetime;
+      parsed.action = 'create';
       await db.saveTemplate(userId, name, parsed);
-      return bot.sendMessage(chatId, 'Da luu template <b>"' + escHtml(name) + '"</b>!\n\nDung: <code>/gui ' + name + '</code>', { parse_mode: 'HTML' });
-    } catch(e) { return bot.sendMessage(chatId, 'Loi tao template!'); }
-  }
-  if (/^(danh|list|xem)/i.test(input)) {
+      const tagInfo = parsed.mention ? ' (co tag: ' + parsed.mention + ')' : ' (chua co tag)';
+      return bot.sendMessage(chatId, 'Da luu template <b>"' + escHtml(name) + '"</b>' + tagInfo + '!\n\nDung: <code>/gui ' + name + '</code>', { parse_mode: 'HTML' });
+    } catch(e) { console.error('Template error:', e.message); return bot.sendMessage(chatId, 'Loi tao template!'); }
     const templates = await db.listTemplates(userId);
     if (!templates.length) return bot.sendMessage(chatId, 'Chua co template nao!\n\nTao: <code>/template tao "ten" noi dung</code>', { parse_mode: 'HTML' });
     const lines = templates.map(function(t, i) { return (i+1) + '. <b>' + escHtml(t.name) + '</b>' + (t.data && t.data.mention ? ' \uD83D\uDCE8' : ' \uD83D\uDCDD'); }).join('\n');
