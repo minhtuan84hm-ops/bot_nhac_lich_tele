@@ -75,8 +75,10 @@ Quy tắc:
 - "gửi vào nhóm X" hoặc "vào nhóm X" → target_group="X"
 - QUAN TRỌNG: Nếu có "nội dung:" trong tin nhắn thì:
   + title = tóm tắt ngắn gọn hành động chính (vd: "Nhắc Hương", "Họp team")
-  + note = TOÀN BỘ nội dung sau chữ "nội dung:" (giữ nguyên, không cắt bớt)
-- Nếu không có "nội dung:" thì title = nội dung chính, note = null`;
+  + note = nội dung sau chữ "nội dung:" NHƯNG phải loại bỏ phần "vào nhóm X" ở cuối nếu có
+  + Ví dụ: "nội dung: Cập nhật PYC vào nhóm CS_Salefarm Team" → note = "Cập nhật PYC", target_group = "CS_Salefarm Team"
+- Nếu không có "nội dung:" thì title = nội dung chính, note = null
+- "vào nhóm X" hoặc "gửi vào nhóm X" luôn được tách ra thành target_group, KHÔNG được để lại trong note`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
