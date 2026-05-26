@@ -423,4 +423,11 @@ bot.on('message', function(msg) {
 });
 
 restoreJobs();
+
+// Self-ping moi 4 phut de giu process song va tranh Render ngat ket noi
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + PORT;
+setInterval(async function() {
+  try { await fetch(SELF_URL); } catch(e) {}
+}, 4 * 60 * 1000);
+
 console.log('Bot nhac lich dang chay (Groq AI)...');
