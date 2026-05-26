@@ -59,7 +59,7 @@ JSON:
   "repeat": "none"|"daily"|"weekly",
   "remind_before": [số phút],
   "mention": "@user1 @user2 hoặc null",
-  "note": "ghi chú hoặc null",
+  "note": "toàn bộ nội dung sau chữ 'nội dung:' hoặc null",
   "target_group": "tên nhóm hoặc null"
 }
 Quy tắc:
@@ -72,7 +72,11 @@ Quy tắc:
 - "lịch hôm nay" → action="today", "ngày mai có gì" → action="tomorrow"
 - "tuần này" → action="this_week", "tuần sau" → action="next_week"
 - /list hoặc "xem lịch" → action="list"
-- "gửi vào nhóm X" hoặc "vào nhóm X" → target_group="X"`;
+- "gửi vào nhóm X" hoặc "vào nhóm X" → target_group="X"
+- QUAN TRỌNG: Nếu có "nội dung:" trong tin nhắn thì:
+  + title = tóm tắt ngắn gọn hành động chính (vd: "Nhắc Hương", "Họp team")
+  + note = TOÀN BỘ nội dung sau chữ "nội dung:" (giữ nguyên, không cắt bớt)
+- Nếu không có "nội dung:" thì title = nội dung chính, note = null`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
