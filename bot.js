@@ -99,7 +99,7 @@ Quy tắc:
   const data = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(data));
   let raw = data.choices[0].message.content.trim()
-    .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    .replace(/^```json\s<b>/i, '').replace(/^```\s</b>/i, '').replace(/```\s*$/i, '').trim();
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) raw = match[0];
   try { return JSON.parse(raw); } catch(e) { return { action: 'unknown' }; }
@@ -118,19 +118,21 @@ function scheduleJob(event) {
       : dt;
   schedule.scheduleJob(jobId, rule, async () => {
     const mention = event.mention ? event.mention + ' ' : '';
-    const msg = `🔔 *Đến giờ rồi!*\n\n${mention}📌 *${event.title}*\n🕐 ${formatDateTime(new Date(event.datetime))}${event.note ? '\n📝 ' + event.note : ''}`;
-    try { await bot.sendMessage(event.chat_id, msg, { parse_mode: 'Markdown' }); } catch(e) {}
+    const msg = `🔔 <b>Đến giờ rồi!</b>\n\n${mention}📌 <b>${escMd(event.title)}</b>\n🕐 ${formatDateTime(new Date(event.datetime))}${event.note ? '\n📝 ' + event.note : ''}`;
+    const sendTo = event.target_chat_id || event.chat_id;
+    try { await bot.sendMessage(sendTo, msg, { parse_mode: 'HTML' }); } catch(e) { console.error('Lỗi gửi nhắc:', e.message); }
     if (event.repeat === 'none') db.deleteEvent(event.id);
   });
   const remindBefore = event.remind_before ? JSON.parse(event.remind_before) : [];
   remindBefore.forEach(minutes => {
-    const remindTime = new Date(dt.getTime() - minutes * 60 * 1000);
+    const remindTime = new Date(dt.getTime() - minutes <b> 60 </b> 1000);
     if (remindTime <= new Date()) return;
     const rJobId = `event_${event.id}_before_${minutes}`;
     if (schedule.scheduledJobs[rJobId]) schedule.scheduledJobs[rJobId].cancel();
     schedule.scheduleJob(rJobId, remindTime, async () => {
       const mention = event.mention ? event.mention + ' ' : '';
-      try { await bot.sendMessage(event.chat_id, `⏰ *Nhắc trước ${minutes} phút!*\n\n${mention}📌 *${event.title}*\n🕐 ${formatDateTime(new Date(event.datetime))}`, { parse_mode: 'Markdown' }); } catch(e) {}
+      const sendTo2 = event.target_chat_id || event.chat_id;
+      try { await bot.sendMessage(sendTo2, `⏰ <b>Nhắc trước ${minutes} phút!</b>\n\n${mention}📌 <b>${escMd(event.title)}</b>\n🕐 ${formatDateTime(new Date(event.datetime))}`, { parse_mode: 'HTML' }); } catch(e) {}
     });
   });
 }
@@ -154,7 +156,11 @@ async function restoreJobs() {
 // ─── Escape markdown ─────────────────────────────────────────────────────────
 function escMd(text) {
   if (!text) return '';
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\$&');
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}.!]/g, '\$&');
 }
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -167,8 +173,8 @@ function repeatLabel(r) {
 
 // ─── Main menu ────────────────────────────────────────────────────────────────
 function sendMainMenu(chatId) {
-  bot.sendMessage(chatId, '📅 *Xin chào! Chọn chức năng:*', {
-    parse_mode: 'Markdown',
+  bot.sendMessage(chatId, '📅 <b>Xin chào! Chọn chức năng:</b>', {
+    parse_mode: 'HTML',
     reply_markup: {
       keyboard: [
         ['📅 Hôm nay', '📅 Ngày mai'],
@@ -191,14 +197,14 @@ async function showEvents(chatId, events, title) {
     const remindBefore = ev.remind_before ? JSON.parse(ev.remind_before) : [];
     const remindText = remindBefore.length > 0 ? `\n⏰ Nhắc trước: ${remindBefore.join(', ')} phút` : '';
     const msg =
-      `📌 *${ev.title}*\n` +
+      `📌 <b>${escMd(ev.title)}</b>\n` +
       `🕐 ${formatDateTime(dt)}\n` +
       `${repeatLabel(ev.repeat)}` +
       `${ev.mention ? '\n👤 ' + ev.mention : ''}` +
       `${remindText}` +
       `${ev.note ? '\n📝 ' + ev.note : ''}`;
     await bot.sendMessage(chatId, msg, {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [[{ text: '🗑 Xóa lịch này', callback_data: `del_${ev.id}` }]]
       }
@@ -273,7 +279,7 @@ async function handleMessage(msg) {
       .sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
     return showEvents(chatId, upcoming, 'Tất cả lịch');
   }
-  if (text === '❓ Hướng dẫn') return bot.sendMessage(chatId, helpText(), { parse_mode: 'Markdown' });
+  if (text === '❓ Hướng dẫn') return bot.sendMessage(chatId, helpText(), { parse_mode: 'HTML' });
 
   const deleteMatch = text.match(/^\/delete[_ ](\d+)$/i);
   if (deleteMatch) {
@@ -287,7 +293,7 @@ async function handleMessage(msg) {
   try {
     await bot.sendChatAction(chatId, 'typing');
     const parsed = await parseEventFromText(text);
-    if (parsed.action === 'help') return bot.sendMessage(chatId, helpText(), { parse_mode: 'Markdown' });
+    if (parsed.action === 'help') return bot.sendMessage(chatId, helpText(), { parse_mode: 'HTML' });
     if (parsed.action === 'today') return showByRange(chatId, userId, 'today', 'Hôm nay', isGroup);
     if (parsed.action === 'tomorrow') return showByRange(chatId, userId, 'tomorrow', 'Ngày mai', isGroup);
     if (parsed.action === 'this_week') return showByRange(chatId, userId, 'this_week', 'Tuần này', isGroup);
@@ -301,7 +307,7 @@ async function handleMessage(msg) {
       return showEvents(chatId, upcoming, 'Tất cả lịch');
     }
     if (parsed.action === 'create') {
-      if (!parsed.datetime) return bot.sendMessage(chatId, `⚠️ Tôi chưa rõ *thời gian*.\n\nVí dụ: _"họp team 2h chiều mai"_`, { parse_mode: 'Markdown' });
+      if (!parsed.datetime) return bot.sendMessage(chatId, `⚠️ Tôi chưa rõ <b>thời gian</b>.\n\nVí dụ: _"họp team 2h chiều mai"_`, { parse_mode: 'HTML' });
       const remindBefore = Array.isArray(parsed.remind_before) ? parsed.remind_before : [];
       const ev = await db.addEvent({
         chat_id: chatId, user_id: userId, created_by: username,
@@ -314,11 +320,11 @@ async function handleMessage(msg) {
       const dt = new Date(parsed.datetime);
       const remindText = remindBefore.length > 0 ? `\n⏰ Nhắc trước: ${remindBefore.map(m => m >= 60 ? m/60 + ' tiếng' : m + ' phút').join(', ')}` : '';
       return bot.sendMessage(chatId,
-        `✅ *Đã tạo lịch!*\n\n📌 *${ev.title}*\n🕐 ${formatDateTime(dt)}\n${repeatLabel(ev.repeat)}\n` +
+        `✅ <b>Đã tạo lịch!</b>\n\n📌 <b>${escMd(ev.title)}</b>\n🕐 ${formatDateTime(dt)}\n${repeatLabel(ev.repeat)}\n` +
         `${ev.mention ? '👤 ' + ev.mention + '\n' : ''}${remindText}${ev.note ? '\n📝 ' + ev.note : ''}\n\n_Bot sẽ nhắc đúng giờ_ 🔔`,
-        { parse_mode: 'Markdown' });
+        { parse_mode: 'HTML' });
     }
-    return bot.sendMessage(chatId, `🤔 Tôi chưa hiểu. Thử: _"họp team 3h chiều mai"_ hoặc nhấn *❓ Hướng dẫn*`, { parse_mode: 'Markdown' });
+    return bot.sendMessage(chatId, `🤔 Tôi chưa hiểu. Thử: _"họp team 3h chiều mai"_ hoặc nhấn <b>❓ Hướng dẫn</b>`, { parse_mode: 'HTML' });
   } catch (err) {
     console.error('Lỗi:', err);
     bot.sendMessage(chatId, '❌ Có lỗi xảy ra, thử lại sau nhé!');
@@ -326,7 +332,7 @@ async function handleMessage(msg) {
 }
 
 function helpText() {
-  return `👋 *Bot trợ lý lịch* 🗓
+  return `👋 <b>Bot trợ lý lịch</b> 🗓
 
 Nhắn tin tự nhiên để tạo lịch:
 • _họp team 2h chiều mai_
@@ -352,7 +358,7 @@ bot.on('callback_query', async (query) => {
     if (ok) {
       try {
         await bot.editMessageText('~~Đã xóa lịch này~~', {
-          chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown'
+          chat_id: chatId, message_id: query.message.message_id, parse_mode: 'HTML'
         });
       } catch(e) {}
     }
@@ -367,7 +373,7 @@ bot.onText(/\/getid/, async (msg) => {
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
     await db.registerGroup(chatId, chatName);
   }
-  bot.sendMessage(chatId, `🆔 *${chatName}*\nChat ID: \`${chatId}\`\n\n✅ Đã đăng ký nhóm này! Giờ bạn có thể tạo lịch từ chat riêng và gửi vào nhóm này.`, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, `🆔 <b>${chatName}</b>\nChat ID: \`${chatId}\`\n\n✅ Đã đăng ký nhóm này! Giờ bạn có thể tạo lịch từ chat riêng và gửi vào nhóm này.`, { parse_mode: 'HTML' });
 });
 
 // Auto register group khi bot được thêm vào
@@ -377,7 +383,7 @@ bot.on('new_chat_members', async (msg) => {
   const isBotAdded = newMembers.some(m => m.id === botInfo.id);
   if (isBotAdded && (msg.chat.type === 'group' || msg.chat.type === 'supergroup')) {
     await db.registerGroup(msg.chat.id, msg.chat.title);
-    bot.sendMessage(msg.chat.id, `👋 Xin chào! Tôi là bot trợ lý lịch!\n\n✅ Đã đăng ký nhóm *${msg.chat.title}*\n\nGõ /getid để lấy ID nhóm này!`, { parse_mode: 'Markdown' });
+    bot.sendMessage(msg.chat.id, `👋 Xin chào! Tôi là bot trợ lý lịch!\n\n✅ Đã đăng ký nhóm <b>${msg.chat.title}</b>\n\nGõ /getid để lấy ID nhóm này!`, { parse_mode: 'HTML' });
   }
 });
 bot.onText(/\/today/, (msg) => showByRange(msg.chat.id, msg.from.id, 'today', 'Hôm nay', msg.chat.type === 'group' || msg.chat.type === 'supergroup'));
@@ -389,7 +395,7 @@ bot.onText(/\/list/, async (msg) => {
   const upcoming = events.filter(ev => ev.repeat !== 'none' || new Date(ev.datetime) > new Date());
   showEvents(msg.chat.id, upcoming, 'Tất cả lịch');
 });
-bot.onText(/\/help/, (msg) => bot.sendMessage(msg.chat.id, helpText(), { parse_mode: 'Markdown' }));
+bot.onText(/\/help/, (msg) => bot.sendMessage(msg.chat.id, helpText(), { parse_mode: 'HTML' }));
 
 bot.on('message', (msg) => {
   if (!msg.text) return;
