@@ -364,7 +364,7 @@ bot.onText(/\/template (.+)/, async function(msg, match) {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const input = match[1].trim();
-  const createMatch = input.match(/^t[ao]o\s+"([^"]+)"\s+(.+)/i);
+  const createMatch = input.match(/^t(?:a|\u1ea1|\u00e0|\u00e1|ao)o\s+"([^"]+)"\s+([\s\S]+)/i);
   if (createMatch) {
     const name = createMatch[1];
     const templateContent = createMatch[2];
