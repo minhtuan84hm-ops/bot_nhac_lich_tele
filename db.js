@@ -57,6 +57,61 @@ async function getClient() {
   return client;
 }
 
+// ─── Templates ───────────────────────────────────────────────────────────────
+async function saveTemplate(userId, name, data) {
+  const db = await getClient();
+  await db.query(`CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    data JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, name)
+  )`);
+  await db.query(
+    `INSERT INTO templates (user_id, name, data) VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, name) DO UPDATE SET data=$3`,
+    [userId, name.toLowerCase(), JSON.stringify(data)]
+  );
+}
+
+async function getTemplate(userId, name) {
+  const db = await getClient();
+  await db.query(`CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    data JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, name)
+  )`);
+  const res = await db.query(
+    'SELECT * FROM templates WHERE user_id=$1 AND name=$2',
+    [userId, name.toLowerCase()]
+  );
+  return res.rows[0] || null;
+}
+
+async function listTemplates(userId) {
+  const db = await getClient();
+  await db.query(`CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    data JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, name)
+  )`);
+  const res = await db.query('SELECT * FROM templates WHERE user_id=$1 ORDER BY name ASC', [userId]);
+  return res.rows;
+}
+
+async function deleteTemplate(userId, name) {
+  const db = await getClient();
+  const res = await db.query('DELETE FROM templates WHERE user_id=$1 AND name=$2', [userId, name.toLowerCase()]);
+  return res.rowCount > 0;
+}
+
 async function registerGroup(chatId, name) {
   const db = await getClient();
   await db.query(
@@ -147,4 +202,4 @@ async function deleteEventByChat(id, chatId) {
   return res.rowCount > 0;
 }
 
-module.exports = { addEvent, getAllEvents, getAllEventsForChat, getAllEventsForGroup, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat, registerGroup, getGroups, findGroupByName };
+module.exports = { addEvent, getAllEvents, getAllEventsForChat, getAllEventsForGroup, getUpcomingEvents, getTodayEvents, deleteEvent, deleteEventByChat, registerGroup, getGroups, findGroupByName, saveTemplate, getTemplate, listTemplates, deleteTemplate };
